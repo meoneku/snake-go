@@ -1,0 +1,48 @@
+name: build
+
+# Build otomatis Ular-ularan di Linux, Windows, dan macOS.
+# Cara pakai: push repo ini ke GitHub → tab Actions → download artifact per OS.
+# Pemicu manual juga bisa via tombol "Run workflow".
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Dependensi GUI (Linux)
+        if: runner.os == 'Linux'
+        run: >
+          sudo apt-get update &&
+          sudo apt-get install -y libx11-dev libxrandr-dev libxi-dev
+          libxcursor-dev libxinerama-dev libgl1-mesa-dev
+
+      - name: Dependensi GUI (Windows)
+        if: runner.os == 'Windows'
+        run: choco install mingw -y --no-progress
+
+      - name: Build terminal
+        run: go build -o ular-terminal .
+
+      - name: Build GUI desktop
+        run: cd gui && go build -ldflags="-H windowsgui" -o ../ular-gui .
+        # -H windowsgui hanya berpengaruh di Windows (tanpa console);
+        # di Linux/macOS flag ini diabaikan.
+
+      - name: Test logika terminal
+        run: go test ./...
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ular-ularan-${{ runner.os }}
+          path: ular-*
