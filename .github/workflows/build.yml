@@ -27,17 +27,35 @@ jobs:
           sudo apt-get install -y libx11-dev libxrandr-dev libxi-dev
           libxcursor-dev libxinerama-dev libgl1-mesa-dev
 
-      - name: Dependensi GUI (Windows)
+      - name: Dependensi GUI (Windows, via MSYS2)
         if: runner.os == 'Windows'
-        run: choco install mingw -y --no-progress
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc
+
+      - name: Tambahkan compiler MSYS2 ke PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo "C:\\msys64\\mingw64\\bin" >> $GITHUB_PATH
 
       - name: Build terminal
         run: go build -o ular-terminal .
 
-      - name: Build GUI desktop
-        run: cd gui && go build -ldflags="-H windowsgui" -o ../ular-gui .
-        # -H windowsgui hanya berpengaruh di Windows (tanpa console);
-        # di Linux/macOS flag ini diabaikan.
+      - name: Build GUI desktop (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cd gui
+          go build -ldflags="-H windowsgui" -o ../ular-gui .
+
+      - name: Build GUI desktop (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cd gui
+          go build -o ../ular-gui .
 
       - name: Test logika terminal
         run: go test ./...
