@@ -11,9 +11,6 @@ import (
 	"math"
 	"math/rand"
 	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/audio"

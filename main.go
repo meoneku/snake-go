@@ -5,9 +5,7 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
@@ -388,7 +386,9 @@ func main() {
 			case "restart", "enter":
 				if g.Over {
 					g.Reset()
-					g.Best = loadBest()
+					if g.GameData != nil {
+						g.Best = g.GameData.BestScore
+					}
 				}
 			case "mode":
 				g.Wrap = !g.Wrap
