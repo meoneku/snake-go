@@ -10,6 +10,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"banguncandi/pkg/scores"
+	"banguncandi/pkg/version"
 )
 
 type Point struct{ X, Y int }
@@ -35,15 +38,19 @@ type Game struct {
 	Paused    bool
 	Wrap      bool
 	Tick      time.Duration
-	NeedDraw  bool
+	NeedDraw        bool
+	GameData        *scores.GameData
+	ShowLeaderboard bool
+	LastRank        int
+	LastIsNewBest   bool
 }
 
 func NewGame(w, h int) *Game {
 	g := &Game{W: w, H: h, Tick: 150 * time.Millisecond}
 	g.Reset()
-	g.Best = loadBest()
-	if g.Best < 0 {
-		g.Best = 0
+	g.GameData, _ = scores.Load()
+	if g.GameData != nil {
+		g.Best = g.GameData.BestScore
 	}
 	return g
 }
@@ -152,7 +159,6 @@ func (g *Game) Update() {
 		g.Score += 10
 		if g.Score > g.Best {
 			g.Best = g.Score
-			saveBest(g.Best)
 		}
 		if g.Tick > 60*time.Millisecond {
 			g.Tick -= 5 * time.Millisecond
@@ -164,9 +170,16 @@ func (g *Game) Update() {
 }
 func (g *Game) gameOver() {
 	g.Over = true
-	if g.Score > g.Best {
-		g.Best = g.Score
-		saveBest(g.Best)
+	if g.GameData != nil {
+		modeStr := "Dinding"
+		if g.Wrap {
+			modeStr = "Tembus"
+		}
+		lvl := int((150*time.Millisecond - g.Tick) / (5 * time.Millisecond)) + 1
+		isNewBest, rank := g.GameData.Record(g.Score, len(g.Snake), lvl, modeStr, g.Score/10, 0)
+		g.Best = g.GameData.BestScore
+		g.LastRank = rank
+		g.LastIsNewBest = isNewBest
 	}
 }
 func sttyCmd(extra ...string) *exec.Cmd {
@@ -237,6 +250,8 @@ func readInput(ch chan<- string) {
 			ch <- "pause"
 		case 'r', 'R':
 			ch <- "restart"
+		case 'l', 'L':
+			ch <- "leaderboard"
 		case 'm', 'M':
 			ch <- "mode"
 		case 'q', 'Q', 0x03:
@@ -273,7 +288,7 @@ func (g *Game) Draw() string {
 	if g.Wrap {
 		mode = "Wrap"
 	}
-	sb.WriteString(fmt.Sprintf("  SNAKE  |  Skor: %d  |  Terbaik: %d  |  Panjang: %d  |  Mode: %s (M)\n", g.Score, g.Best, len(g.Snake), mode))
+	sb.WriteString(fmt.Sprintf("  SNAKE-GO %s  |  Skor: %d  |  Terbaik: %d  |  Panjang: %d  |  Mode: %s (M)\n", version.Short(), g.Score, g.Best, len(g.Snake), mode))
 	inSnake := make(map[Point]bool, len(g.Snake))
 	for _, s := range g.Snake {
 		inSnake[s] = true
@@ -306,36 +321,42 @@ func (g *Game) Draw() string {
 		}
 		sb.WriteString("\n")
 	}
-	if g.Over {
-		sb.WriteString("\n  \x1b[31mGAME OVER!\x1b[0m  Tekan R / Enter untuk main lagi, Q untuk keluar.\n")
+	if g.ShowLeaderboard {
+		sb.WriteString("\n  === PAPAN SKOR TERTINGGI (TOP 5) ===\n")
+		if g.GameData == nil || len(g.GameData.HighScores) == 0 {
+			sb.WriteString("  Belum ada skor tersimpan.\n")
+		} else {
+			for i, e := range g.GameData.HighScores {
+				if i >= 5 {
+					break
+				}
+				sb.WriteString(fmt.Sprintf("  #%d - %4d pts | Pjg: %2d | %-7s | %s\n",
+					e.Rank, e.Score, e.Length, e.Mode, e.Timestamp.Format("02 Jan 15:04")))
+			}
+		}
+		sb.WriteString("  [ Tekan L untuk menutup papan skor ]\n")
+	} else if g.Over {
+		if g.LastRank > 0 {
+			sb.WriteString(fmt.Sprintf("  \x1b[33m★ MASUK LEADERBOARD #%d! ★\x1b[0m\n", g.LastRank))
+		}
+		sb.WriteString("\n  \x1b[31mGAME OVER!\x1b[0m  R/Enter: Main lagi | L: Skor | Q: Keluar\n")
 	} else if g.Paused {
-		sb.WriteString("\n  PAUSE — tekan P / Spasi untuk lanjut.\n")
+		sb.WriteString("\n  PAUSE — P/Spasi: Lanjut | L: Lihat Skor\n")
 	} else {
-		sb.WriteString("\n  Kontrol: WASD / Panah = gerak, P = pause, Q = keluar.\n")
+		sb.WriteString("\n  Kontrol: WASD/Panah = gerak, P = pause, L = skor, Q = keluar.\n")
 	}
 	return sb.String()
 }
-func bestFile() string {
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		return filepath.Join(home, ".ular_best")
-	}
-	return ".ular_best"
-}
-func loadBest() int {
-	b, err := os.ReadFile(bestFile())
-	if err != nil {
-		return 0
-	}
-	n, _ := strconv.Atoi(strings.TrimSpace(string(b)))
-	if n < 0 {
-		n = 0
-	}
-	return n
-}
-func saveBest(n int) {
-	_ = os.WriteFile(bestFile(), []byte(strconv.Itoa(n)+"\n"), 0644)
-}
+// Legacy score functions replaced by pkg/scores
+
 func main() {
+	if len(os.Args) > 1 {
+		arg := strings.ToLower(os.Args[1])
+		if arg == "--version" || arg == "-v" || arg == "version" {
+			fmt.Println(version.Info())
+			return
+		}
+	}
 	rand.Seed(time.Now().UnixNano())
 	g := NewGame(50, 20)
 	restore := enableRaw()
@@ -350,6 +371,8 @@ func main() {
 		select {
 		case key := <-input:
 			switch key {
+			case "leaderboard":
+				g.ShowLeaderboard = !g.ShowLeaderboard
 			case "up":
 				g.setDir(Up)
 			case "down":
@@ -371,7 +394,8 @@ func main() {
 				g.Wrap = !g.Wrap
 			case "quit", "esc":
 				fmt.Print("\x1b[H\x1b[2J")
-				fmt.Printf("Keluar. Skor terakhir: %d, Terbaik: %d. Bye!\n", g.Score, g.Best)
+				fmt.Printf("Keluar dari Snake Go %s.\n", version.Short())
+				fmt.Printf("Skor terakhir: %d | Skor terbaik: %d\n", g.Score, g.Best)
 				return
 			}
 			fmt.Print(g.Draw())

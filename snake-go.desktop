@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Snake Go
+GenericName=Snake Game
+Comment=Modern Snake game written in Go with Ebitengine
+Exec=snake-go-gui
+Icon=snake-go
+Terminal=false
+Type=Application
+Categories=Game;ArcadeGame;
+Keywords=snake;game;arcade;retro;snake-go;

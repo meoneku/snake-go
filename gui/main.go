@@ -1,7 +1,20 @@
 package main
 
 import (
+	"bytes"
+	_ "embed"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
+	"log"
+	"math"
+	"math/rand"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -10,15 +23,33 @@ import (
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/font/opentype"
-	"image/color"
-	"log"
-	"math"
-	"math/rand"
-	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
+
+	"banguncandi/pkg/scores"
+	"banguncandi/pkg/version"
 )
+
+//go:embed assets/icon_16.png
+var icon16Bytes []byte
+
+//go:embed assets/icon_32.png
+var icon32Bytes []byte
+
+//go:embed assets/icon_48.png
+var icon48Bytes []byte
+
+//go:embed assets/icon_256.png
+var icon256Bytes []byte
+
+func loadWindowIcons() []image.Image {
+	var icons []image.Image
+	for _, b := range [][]byte{icon16Bytes, icon32Bytes, icon48Bytes, icon256Bytes} {
+		img, err := png.Decode(bytes.NewReader(b))
+		if err == nil {
+			icons = append(icons, img)
+		}
+	}
+	return icons
+}
 
 const (
 	cols     = 25
@@ -162,6 +193,13 @@ type Game struct {
 	boardBG   *ebiten.Image
 	px, py    []float64
 	audioCtx  *audio.Context
+
+	gameData        *scores.GameData
+	showLeaderboard bool
+	lastRank        int
+	lastIsNewBest   bool
+	applesInRun     int
+	starsInRun      int
 }
 
 func NewGame() *Game {
@@ -180,7 +218,10 @@ func NewGame() *Game {
 	}
 	g.Reset()
 	g.started = false
-	g.best = loadBest()
+	g.gameData, _ = scores.Load()
+	if g.gameData != nil {
+		g.best = g.gameData.BestScore
+	}
 	return g
 }
 func (g *Game) Reset() {
@@ -189,6 +230,9 @@ func (g *Game) Reset() {
 	g.prev = append([]Point(nil), g.snake...)
 	g.dir, g.nextDir = Right, Right
 	g.score, g.eaten = 0, 0
+	g.applesInRun, g.starsInRun = 0, 0
+	g.lastRank = 0
+	g.lastIsNewBest = false
 	g.over, g.paused = false, false
 	g.started = true
 	g.gap, g.tick = startGap, 0
@@ -292,10 +336,10 @@ func (g *Game) step() {
 	}
 	if eatApple {
 		g.eaten++
+		g.applesInRun++
 		g.score += 10
 		if g.score > g.best {
 			g.best = g.score
-			saveBest(g.best)
 		}
 		g.playBeep(880, 70, 0.25)
 		if g.gap > minGap {
@@ -317,10 +361,10 @@ func (g *Game) step() {
 		}
 	}
 	if eatBonus {
+		g.starsInRun++
 		g.score += 50
 		if g.score > g.best {
 			g.best = g.score
-			saveBest(g.best)
 		}
 		g.playBeep(1320, 90, 0.28)
 		fx, fy := g.cellCenter(g.bonus.pos)
@@ -336,9 +380,15 @@ func (g *Game) finish() {
 	g.over = true
 	g.flash = 0.55
 	g.shake = 9
-	if g.score > g.best {
-		g.best = g.score
-		saveBest(g.best)
+	if g.gameData != nil {
+		modeStr := "Dinding"
+		if g.wrap {
+			modeStr = "Tembus"
+		}
+		isNewBest, rank := g.gameData.Record(g.score, len(g.snake), startGap-g.gap+1, modeStr, g.applesInRun, g.starsInRun)
+		g.best = g.gameData.BestScore
+		g.lastRank = rank
+		g.lastIsNewBest = isNewBest
 	}
 	g.playBeep(220, 320, 0.35)
 	hx, hy := g.cellCenter(g.snake[0])
@@ -396,6 +446,15 @@ func (g *Game) Update() error {
 			g.Reset()
 		} else {
 			g.started = true
+		}
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyL) {
+		g.showLeaderboard = !g.showLeaderboard
+	}
+	if g.showLeaderboard {
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+			g.showLeaderboard = false
+			return nil
 		}
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyQ) {
@@ -520,7 +579,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		a := uint8(math.Min(g.flash, 0.6) * 255)
 		vector.FillRect(screen, 0, 0, winW, winH, color.RGBA{0xef, 0x44, 0x44, a}, false)
 	}
-	if !g.started {
+	if g.showLeaderboard {
+		g.drawLeaderboard(screen)
+	} else if !g.started {
 		g.drawStart(screen)
 	} else if g.over {
 		g.drawGameOver(screen)
@@ -529,7 +590,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 }
 func (g *Game) drawHUD(screen *ebiten.Image) {
-	text.Draw(screen, "Ular-ularan", fTitle, margin, 30, cText)
+	text.Draw(screen, "Snake Go", fTitle, margin, 30, cText)
 	pills := []struct {
 		label string
 		val   string
@@ -553,7 +614,7 @@ func (g *Game) drawHUD(screen *ebiten.Image) {
 		drawCentered(screen, p.val, fHUD, int(x+pw/2), 56, p.clr)
 		x -= 8
 	}
-	text.Draw(screen, "WASD / Panah gerak   •   P pause   •   R restart   •   M mode   •   Esc keluar", fSmall, margin, 100, cDim)
+	text.Draw(screen, "WASD/Panah gerak  •  P pause  •  R restart  •  L skor  •  M mode  •  Esc keluar", fSmall, margin, 100, cDim)
 }
 func (g *Game) drawSnake(dst *ebiten.Image) {
 	n := len(g.snake)
@@ -683,8 +744,8 @@ func (g *Game) drawStart(screen *ebiten.Image) {
 	px, py := float32(winW)/2-pw/2, float32(winH)/2-ph/2
 	roundRect(screen, px, py, pw, ph, 20, cPanel)
 	vector.StrokeRect(screen, px+1, py+1, pw-2, ph-2, 1.5, cAccent, true)
-	drawCentered(screen, "Ular-ularan", fBig, winW/2, int(py)+72, cHead)
-	drawCentered(screen, "papan 25 × 25", fSmall, winW/2, int(py)+100, cDim)
+	drawCentered(screen, "Snake Go", fBig, winW/2, int(py)+72, cHead)
+	drawCentered(screen, "papan 25 × 25  •  " + version.Short(), fSmall, winW/2, int(py)+100, cDim)
 	drawCentered(screen, "Makan apel +10  •  Bintang emas +50", fHUD, winW/2, int(py)+140, cGold)
 	blink := g.frame/30%2 == 0
 	if blink {
@@ -695,7 +756,7 @@ func (g *Game) drawStart(screen *ebiten.Image) {
 		mode = "Wrap"
 	}
 	drawCentered(screen, "Mode: "+mode+" (M)", fSmall, winW/2, int(py)+205, cDim)
-	drawCentered(screen, "P pause   •   R restart   •   Esc keluar", fSmall, winW/2, int(py)+225, cDim)
+	drawCentered(screen, "L papan skor   •   P pause   •   R restart   •   Esc keluar", fSmall, winW/2, int(py)+225, cDim)
 }
 func (g *Game) drawGameOver(screen *ebiten.Image) {
 	g.dim(screen)
@@ -706,11 +767,13 @@ func (g *Game) drawGameOver(screen *ebiten.Image) {
 	drawCentered(screen, "GAME OVER", fBig, winW/2, int(py)+74, cApple)
 	drawCentered(screen, fmt.Sprintf("Skor %d   •   Terbaik %d   •   Panjang %d", g.score, g.best, len(g.snake)),
 		fHUD, winW/2, int(py)+116, cText)
-	if g.score >= g.best && g.score > 0 {
+	if g.lastRank > 0 {
+		drawCentered(screen, fmt.Sprintf("★ Masuk Leaderboard #%d! ★", g.lastRank), fHUD, winW/2, int(py)+148, cGold)
+	} else if g.lastIsNewBest && g.score > 0 {
 		drawCentered(screen, "★ Rekor baru! ★", fHUD, winW/2, int(py)+148, cGold)
 	}
 	if g.frame/30%2 == 0 {
-		drawCentered(screen, "R / Enter = main lagi     Esc = keluar", fHUD, winW/2, int(py)+200, cText)
+		drawCentered(screen, "R / Enter main lagi   •   L papan skor   •   Esc keluar", fSmall, winW/2, int(py)+200, cText)
 	}
 }
 func (g *Game) drawPaused(screen *ebiten.Image) {
@@ -721,6 +784,62 @@ func (g *Game) drawPaused(screen *ebiten.Image) {
 	vector.StrokeRect(screen, px+1, py+1, pw-2, ph-2, 1.5, cAccent, true)
 	drawCentered(screen, "PAUSED", fTitle, winW/2, int(py)+52, cText)
 	drawCentered(screen, "tekan P untuk lanjut", fSmall, winW/2, int(py)+78, cDim)
+}
+func (g *Game) drawLeaderboard(screen *ebiten.Image) {
+	g.dim(screen)
+	pw, ph := float32(520), float32(500)
+	px, py := float32(winW)/2-pw/2, float32(winH)/2-ph/2
+	roundRect(screen, px, py, pw, ph, 20, cPanel)
+	vector.StrokeRect(screen, px+1, py+1, pw-2, ph-2, 1.5, cAccent, true)
+
+	drawCentered(screen, "PAPAN SKOR TERTINGGI (TOP 10)", fTitle, winW/2, int(py)+40, cGold)
+	drawCentered(screen, "Snake Go "+version.Short()+" • Data tersimpan otomatis", fSmall, winW/2, int(py)+64, cDim)
+
+	// Table Headers
+	y := int(py) + 98
+	vector.FillRect(screen, px+24, float32(y-16), pw-48, 24, cPill, true)
+	text.Draw(screen, "#", fSmall, int(px)+36, y, cDim)
+	text.Draw(screen, "SKOR", fSmall, int(px)+72, y, cDim)
+	text.Draw(screen, "PANJANG", fSmall, int(px)+150, y, cDim)
+	text.Draw(screen, "LEVEL", fSmall, int(px)+236, y, cDim)
+	text.Draw(screen, "MODE", fSmall, int(px)+310, y, cDim)
+	text.Draw(screen, "TANGGAL", fSmall, int(px)+390, y, cDim)
+
+	if g.gameData == nil || len(g.gameData.HighScores) == 0 {
+		drawCentered(screen, "Belum ada rekor tersimpan. Mainkan sekarang!", fHUD, winW/2, int(py)+250, cDim)
+	} else {
+		for i, entry := range g.gameData.HighScores {
+			if i >= 10 {
+				break
+			}
+			rowY := y + 28 + i*28
+			var rankClr color.Color = cText
+			if entry.Rank == 1 {
+				rankClr = cGold
+			} else if entry.Rank == 2 {
+				rankClr = color.RGBA{0x94, 0xa3, 0xb8, 0xff}
+			} else if entry.Rank == 3 {
+				rankClr = color.RGBA{0xcd, 0x7f, 0x32, 0xff}
+			}
+
+			rankStr := fmt.Sprintf("%d", entry.Rank)
+			text.Draw(screen, rankStr, fSmall, int(px)+36, rowY, rankClr)
+			text.Draw(screen, fmt.Sprintf("%d", entry.Score), fHUD, int(px)+72, rowY, cAccent)
+			text.Draw(screen, fmt.Sprintf("%d", entry.Length), fSmall, int(px)+160, rowY, cText)
+			text.Draw(screen, fmt.Sprintf("%d", entry.Level), fSmall, int(px)+246, rowY, cText)
+			text.Draw(screen, entry.Mode, fSmall, int(px)+310, rowY, cDim)
+			timeStr := entry.Timestamp.Format("02 Jan 15:04")
+			text.Draw(screen, timeStr, fSmall, int(px)+390, rowY, cDim)
+		}
+	}
+
+	// Summary Stats Footer
+	if g.gameData != nil {
+		statsStr := fmt.Sprintf("Total Game: %d  •  Apel Dimakan: %d  •  Bintang: %d",
+			g.gameData.GamesPlayed, g.gameData.TotalApples, g.gameData.TotalStars)
+		drawCentered(screen, statsStr, fSmall, winW/2, int(py)+ph-46, cDim)
+	}
+	drawCentered(screen, "Tekan L / Esc untuk kembali ke game", fSmall, winW/2, int(py)+ph-20, cText)
 }
 func (g *Game) Layout(outsideW, outsideH int) (int, int) { return winW, winH }
 func max(a, b int) int {
@@ -759,30 +878,15 @@ func (g *Game) playBeep(freq float64, durMs int, vol float64) {
 	p.SetVolume(vol)
 	p.Play()
 }
-func bestFile() string {
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		return filepath.Join(home, ".ular_best")
-	}
-	return ".ular_best"
-}
-func loadBest() int {
-	b, err := os.ReadFile(bestFile())
-	if err != nil {
-		return 0
-	}
-	n, _ := strconv.Atoi(strings.TrimSpace(string(b)))
-	if n < 0 {
-		n = 0
-	}
-	return n
-}
-func saveBest(n int) {
-	_ = os.WriteFile(bestFile(), []byte(strconv.Itoa(n)+"\n"), 0644)
-}
+// Legacy score functions replaced by pkg/scores
+
 func main() {
 	loadFonts()
 	ebiten.SetWindowSize(winW, winH)
-	ebiten.SetWindowTitle("Ular-ularan")
+	ebiten.SetWindowTitle("Snake Go " + version.Short())
+	if icons := loadWindowIcons(); len(icons) > 0 {
+		ebiten.SetWindowIcon(icons)
+	}
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	if err := ebiten.RunGame(NewGame()); err != nil && err != ebiten.Termination {
 		log.Fatal(err)
