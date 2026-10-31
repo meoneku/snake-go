@@ -7,7 +7,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-VERSION="1.0.0"
+VERSION="1.0.1"
 if [ -f "$PROJECT_ROOT/VERSION" ]; then
   VERSION="$(cat "$PROJECT_ROOT/VERSION" | tr -d '[:space:]')"
 fi

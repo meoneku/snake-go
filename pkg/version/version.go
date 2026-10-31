@@ -5,7 +5,7 @@ import "fmt"
 var (
 	// Version holds the current semantic version of the game.
 	// Can be overridden at build time via -ldflags.
-	Version = "1.0.0"
+	Version = "1.0.1"
 
 	// GitCommit holds the short git commit hash.
 	GitCommit = "dev"

@@ -5,7 +5,7 @@ set -e
 cd "$(dirname "$0")"
 mkdir -p dist
 
-VERSION="1.0.0"
+VERSION="1.0.1"
 if [ -f "VERSION" ]; then
   VERSION="$(cat VERSION | tr -d '[:space:]')"
 fi

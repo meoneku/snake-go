@@ -23,7 +23,7 @@ $ProjectRoot = Resolve-Path (Join-Path $ScriptDir "..\..")
 
 # 1. Baca Versi
 $VersionFile = Join-Path $ProjectRoot "VERSION"
-$Version = "1.0.0"
+$Version = "1.0.1"
 if (Test-Path $VersionFile) {
     $Version = (Get-Content $VersionFile -Raw).Trim()
 }

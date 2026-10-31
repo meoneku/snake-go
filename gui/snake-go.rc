@@ -1,8 +1,8 @@
 IDI_ICON1 ICON "icon.ico"
 
 1 VERSIONINFO
-FILEVERSION     1,0,0,0
-PRODUCTVERSION  1,0,0,0
+FILEVERSION     1,0,1,0
+PRODUCTVERSION  1,0,1,0
 FILEFLAGSMASK   0x3fL
 FILEFLAGS       0x0L
 FILEOS          0x40004L
@@ -15,12 +15,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName",      "Antigravity Games"
             VALUE "FileDescription",  "Snake Go (Desktop Game)"
-            VALUE "FileVersion",      "1.0.0.0"
+            VALUE "FileVersion",      "1.0.1.0"
             VALUE "InternalName",     "snake-go-gui"
             VALUE "LegalCopyright",   "© 2026 Snake Go Contributors"
             VALUE "OriginalFilename", "snake-go-gui.exe"
             VALUE "ProductName",      "Snake Go"
-            VALUE "ProductVersion",   "1.0.0"
+            VALUE "ProductVersion",   "1.0.1"
         END
     END
     BLOCK "VarFileInfo"

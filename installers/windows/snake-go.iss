@@ -2,7 +2,7 @@
 ; Kompilasi dengan Inno Setup Compiler (ISCC) untuk menghasilkan SnakeGoSetup.exe
 
 #define MyAppName "Snake Go"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "Antigravity Games"
 #define MyAppExeName "snake-go-gui.exe"
 
