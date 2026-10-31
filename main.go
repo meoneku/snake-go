@@ -300,7 +300,7 @@ func (g *Game) Draw() string {
 				continue
 			}
 			if g.obsOccupied(p) {
-				sb.WriteString("\x1b[90m█\x1b[0m")
+				sb.WriteString("\x1b[1;93m█\x1b[0m")
 				continue
 			}
 			if p == g.Food {

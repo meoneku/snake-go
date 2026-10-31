@@ -85,6 +85,11 @@ var (
 	cWhite    = color.RGBA{0xff, 0xff, 0xff, 0xff}
 	cPanel    = color.RGBA{0x15, 0x1d, 0x33, 0xf2}
 	cFlash    = color.RGBA{0xef, 0x44, 0x44, 0xff}
+	cObsAura  = color.RGBA{0xf9, 0x73, 0x16, 0x55} // soft hazard orange glow aura
+	cObsBase  = color.RGBA{0x45, 0x0a, 0x14, 0xff} // deep dark warning maroon base
+	cObsBorder = color.RGBA{0xf9, 0x73, 0x16, 0xff} // vibrant hazard orange border
+	cObsMark  = color.RGBA{0xfd, 0xba, 0x74, 0xff} // bright amber warning cross
+	cObsRivet = color.RGBA{0xff, 0xed, 0xd5, 0xff} // bright corner rivets
 )
 var (
 	fTitle font.Face
@@ -678,8 +683,20 @@ func (g *Game) drawObstacles(dst *ebiten.Image) {
 	for _, o := range g.obstacles {
 		x := float32(o.X * cell)
 		y := float32(o.Y * cell)
-		vector.FillRect(dst, x+2, y+2, cell-4, cell-4, cPill, true)
-		vector.StrokeRect(dst, x+1, y+1, cell-2, cell-2, 1, cPillEdge, true)
+		// Soft danger aura
+		vector.FillRect(dst, x+1, y+1, cell-2, cell-2, cObsAura, true)
+		// Solid dark hazard block base
+		vector.FillRect(dst, x+2, y+2, cell-4, cell-4, cObsBase, true)
+		// High-contrast neon warning border
+		vector.StrokeRect(dst, x+2, y+2, cell-4, cell-4, 2, cObsBorder, true)
+		// Inner hazard 'X' marking
+		vector.StrokeLine(dst, x+6, y+6, x+cell-6, y+cell-6, 2, cObsMark, true)
+		vector.StrokeLine(dst, x+cell-6, y+6, x+6, y+cell-6, 2, cObsMark, true)
+		// Corner rivets
+		vector.FillRect(dst, x+3, y+3, 2, 2, cObsRivet, true)
+		vector.FillRect(dst, x+cell-5, y+3, 2, 2, cObsRivet, true)
+		vector.FillRect(dst, x+3, y+cell-5, 2, 2, cObsRivet, true)
+		vector.FillRect(dst, x+cell-5, y+cell-5, 2, 2, cObsRivet, true)
 	}
 }
 func (g *Game) drawFood(dst *ebiten.Image) {

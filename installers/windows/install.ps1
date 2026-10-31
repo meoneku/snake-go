@@ -71,6 +71,7 @@ if (-not (Test-Path $InstallDir)) {
 # 4. Salin Berkas
 if ($GuiSource -and (Test-Path $GuiSource)) {
     Copy-Item -Path $GuiSource -Destination (Join-Path $InstallDir "snake-go-gui.exe") -Force
+    Unblock-File -Path (Join-Path $InstallDir "snake-go-gui.exe") -ErrorAction SilentlyContinue
     Write-Host "[+] Berhasil memasang snake-go-gui.exe" -ForegroundColor Green
 } else {
     Write-Host "[!] Catatan: Binary snake-go-gui.exe belum di-build. Anda bisa mengompilasinya nanti." -ForegroundColor Yellow
@@ -78,6 +79,7 @@ if ($GuiSource -and (Test-Path $GuiSource)) {
 
 if ($TermSource -and (Test-Path $TermSource)) {
     Copy-Item -Path $TermSource -Destination (Join-Path $InstallDir "snake-go.exe") -Force
+    Unblock-File -Path (Join-Path $InstallDir "snake-go.exe") -ErrorAction SilentlyContinue
     Write-Host "[+] Berhasil memasang snake-go.exe (Terminal)" -ForegroundColor Green
 }
 
