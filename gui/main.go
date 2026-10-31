@@ -834,9 +834,9 @@ func (g *Game) drawLeaderboard(screen *ebiten.Image) {
 	if g.gameData != nil {
 		statsStr := fmt.Sprintf("Total Game: %d  •  Apel Dimakan: %d  •  Bintang: %d",
 			g.gameData.GamesPlayed, g.gameData.TotalApples, g.gameData.TotalStars)
-		drawCentered(screen, statsStr, fSmall, winW/2, int(py)+ph-46, cDim)
+		drawCentered(screen, statsStr, fSmall, winW/2, int(py+ph)-46, cDim)
 	}
-	drawCentered(screen, "Tekan L / Esc untuk kembali ke game", fSmall, winW/2, int(py)+ph-20, cText)
+	drawCentered(screen, "Tekan L / Esc untuk kembali ke game", fSmall, winW/2, int(py+ph)-20, cText)
 }
 func (g *Game) Layout(outsideW, outsideH int) (int, int) { return winW, winH }
 func max(a, b int) int {
